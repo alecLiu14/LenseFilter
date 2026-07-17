@@ -1,10 +1,10 @@
 // import * as fabric from 'fabric';
 
-// variables for image and filter stuff
+// variables for image and filter set up
 const preload = document.getElementById("preload");
 const ctx = preload.getContext("2d");
-const image = new Image();
-const tempImage = new Image();
+const image = new Image(); // for filters that can just use the raw image
+const tempImage = new Image(); // for filters that need a transparent buffer
 const canvas = new fabric.Canvas("actual", 
     {
         width: (window.innerWidth - 10),
@@ -12,15 +12,18 @@ const canvas = new fabric.Canvas("actual",
         preserveDrawingBuffer: true
     });
 let fabricImg = "";
-let blurredImg = "";
-let clipPath, filterTarget, activeTarget;
+let clipPath, filterTarget, activeFilter = false;
 let strokeWidth = 80;
 
-//
+// drop down menu variables
+const filterMenu = document.getElementById("filter-select");
+const filterMap = new Map();
 
+// fabric canvas setup + HTML element setup
 fabric.enableGLFiltering = false;
 fabric.Canvas2dFilterBackend && (fabric.filterBackend = new fabric.Canvas2dFilterBackend());
 preload.style.display = "none";
+filterMenu.style.visibility = "hidden";
 
 image.src = "test.jpg";
 image.onload = function() { // upon image loading, the canvas sets up dimensions to image dimesions
@@ -34,10 +37,26 @@ image.onload = function() { // upon image loading, the canvas sets up dimensions
     canvas.centerObject(fabricImg);
     fabricImg.scaleToHeight(canvas.height / 1.5);
     canvas.set("backgroundImage", fabricImg);
-    // chromaLayer(15, 1);
-    blurLayer();
-    
+
+    filterMenu.style.visibility = "visible";
 }
+
+filterMenu.addEventListener("input", (element) => {
+    let filterString = element.target.value;
+    if (typeof window[filterString] === "function") {
+        if(activeFilter) {
+            activeFilter.visible = false;
+            if(filterMap.get(filterString)) {
+                activeFilter = filterMap.get(filterString);
+                activeFilter.visible = true;
+                return;
+            }
+        }
+        window[filterString](); // calls on the filter
+        return;
+    }
+        
+});
 
 filterTarget = new fabric.Circle({
     radius: 100,
@@ -79,7 +98,7 @@ filterTarget.on('moving', function() {
     canvas.requestRenderAll();
 });
 
-function chromaLayer(intensity, phase) {
+function chromaAbb() {
     /* steps for non vanilla canvas image modifications:
         0. image data will have already been saved to imgData on image load
         1. clear the hidden canvas
@@ -87,6 +106,7 @@ function chromaLayer(intensity, phase) {
             a. issue: how to keep an untouched variant of this?
         3. put image data and then take the URL of it to use as a source to create a new fabricImage layer
     */
+    let intensity = 15, phase = 1;
     preload.width = image.naturalWidth; // then will draw the image via the context
     preload.height = image.naturalHeight;
     ctx.drawImage(image, 0, 0);
@@ -104,36 +124,38 @@ function chromaLayer(intensity, phase) {
         lockMovementX: true,
         lockMovementY: true
     });
-    imageSettingApply(chromaImg);
 
-    // chromaLayer.clipPath = clipPath;
-    // canvas.sendObjectToBack(chromaLayer);
+    imageSettingApply(chromaImg);
     clipPathSetup(chromaImg)
 
     canvas.requestRenderAll();
     ctx.clearRect(0, 0, preload.width, preload.height);
-    activeTarget = chromaLayer;
+    activeFilter = chromaImg;
 }
 
-function blurLayer() {
-    blurredImg = new fabric.Image(tempImage, {
+function blur() {
+    console.log("blurring");
+    let blurImg = new fabric.Image(tempImage, {
         lockMovementX: true,
         lockMovementY: true,
     });
-    imageSettingApply(blurredImg, true);
+    imageSettingApply(blurImg, true);
     
-    blurring(blurredImg);
-    // blurredImg.clipPath = clipPath;
-    // canvas.sendObjectToBack(blurredImg);
-    // canvas.sendObjectToBack(BGclipPath);
-    clipPathSetup(blurredImg);
+    const filter = new fabric.filters.Blur({
+        blur: .5
+    });
+
+    blurImg.filters.push(filter);
+    blurImg.applyFilters();
+    canvas.renderAll();
+
+    clipPathSetup(blurImg);
     
-    activeTarget = blurredImg;
+    activeFilter = blurImg;
+    filterMap.set("blur", blurImg);
 
     canvas.requestRenderAll();
 }
-
-// functions for filter application functions
 
 /**
  * @param {fabric.Image} img
@@ -160,17 +182,4 @@ function clipPathSetup(img) {
     img.clipPath = clipPath;
     canvas.sendObjectToBack(img);
     canvas.sendObjectToBack(BGclipPath);
-}
-
-/**
- * @param {fabric.Image} img
- */
-function blurring(img) {
-    const filter = new fabric.filters.Blur({
-        blur: 0.5
-    });
-
-    img.filters.push(filter);
-    img.applyFilters();
-    canvas.renderAll();
 }
